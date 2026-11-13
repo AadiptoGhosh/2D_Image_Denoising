@@ -8,7 +8,17 @@ Provides RESTful APIs for 2-D Digital Signal Processing:
 - Batch Benchmarking & Dynamic Scientific Interpretation
 """
 
+import sys
 import os
+
+# Ensure backend directory is in sys.path so submodules resolve across deployment environments
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
+# Ensure matplotlib / font caches use a writable directory in serverless / container environments
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
@@ -38,13 +48,29 @@ app = FastAPI(
     title="DSP Image Lab API",
     description="2-D Digital Signal Processing & Image Denoising Laboratory API",
     version="1.0.0",
-    root_path="/api"
 )
 
 # CORS Configuration
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allowed_origins = [
+    "https://2dimagedenoising.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+if cors_origins_env:
+    for o in cors_origins_env.split(","):
+        cleaned = o.strip()
+        if cleaned and cleaned not in allowed_origins:
+            allowed_origins.append(cleaned)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,7 +130,11 @@ class LoadSampleRequest(BaseModel):
 
 
 # --- API Routes ---
+# Handlers are registered for both root and /api/ prefixes to ensure complete
+# compatibility with reverse proxies, direct API calls, and Vercel services.
 
+@app.get("/")
+@app.get("/health")
 @app.get("/api/health")
 def health_check():
     return {
@@ -115,6 +145,7 @@ def health_check():
     }
 
 
+@app.post("/upload")
 @app.post("/api/upload")
 async def upload_image(file: UploadFile = File(...)):
     """
@@ -164,6 +195,7 @@ async def upload_image(file: UploadFile = File(...)):
     }
 
 
+@app.get("/samples")
 @app.get("/api/samples")
 def list_samples():
     """
@@ -179,6 +211,7 @@ def list_samples():
     return {"samples": samples}
 
 
+@app.post("/load-sample")
 @app.post("/api/load-sample")
 def load_sample(req: LoadSampleRequest):
     """
@@ -216,6 +249,7 @@ def load_sample(req: LoadSampleRequest):
     }
 
 
+@app.post("/noise")
 @app.post("/api/noise")
 def apply_noise_api(req: NoiseRequest):
     """
@@ -224,7 +258,7 @@ def apply_noise_api(req: NoiseRequest):
     """
     session = session_manager.get_session(req.session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found. Please upload an image.")
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or load an image.")
 
     clean_img = session.original_image
     ntype = req.noise_type.lower()
@@ -266,6 +300,7 @@ def apply_noise_api(req: NoiseRequest):
     session.noise_metadata = params
     session.last_filtered_image = None
     session.filter_history.clear()
+    session_manager.save_session(session)
 
     # Calculate noisy degradation metrics against original clean image
     metrics = compute_metrics(clean_img, noisy_img, 0.0)
@@ -278,6 +313,7 @@ def apply_noise_api(req: NoiseRequest):
     }
 
 
+@app.post("/reset")
 @app.post("/api/reset")
 def reset_session(data: Dict[str, str]):
     session_id = data.get("session_id")
@@ -294,6 +330,7 @@ def reset_session(data: Dict[str, str]):
     }
 
 
+@app.post("/spatial-filter")
 @app.post("/api/spatial-filter")
 def apply_spatial_filter_api(req: SpatialFilterRequest):
     """
@@ -302,7 +339,7 @@ def apply_spatial_filter_api(req: SpatialFilterRequest):
     """
     session = session_manager.get_session(req.session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or load an image.")
 
     input_img = session.noisy_image
     fname = req.filter_name.lower()
@@ -336,6 +373,7 @@ def apply_spatial_filter_api(req: SpatialFilterRequest):
     # Store in history (avoiding duplicate filter names)
     session.filter_history = [item for item in session.filter_history if item["filter"] != fname]
     session.filter_history.append(result_entry)
+    session_manager.save_session(session)
 
     return {
         "session_id": req.session_id,
@@ -346,6 +384,7 @@ def apply_spatial_filter_api(req: SpatialFilterRequest):
     }
 
 
+@app.post("/frequency-filter")
 @app.post("/api/frequency-filter")
 def apply_frequency_filter_api(req: FrequencyFilterRequest):
     """
@@ -361,7 +400,7 @@ def apply_frequency_filter_api(req: FrequencyFilterRequest):
     """
     session = session_manager.get_session(req.session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or load an image.")
 
     input_img = session.noisy_image
     fname = req.filter_name.lower()
@@ -388,6 +427,7 @@ def apply_frequency_filter_api(req: FrequencyFilterRequest):
     }
     session.filter_history = [item for item in session.filter_history if item["filter"] != f"freq_{fname}"]
     session.filter_history.append(result_entry)
+    session_manager.save_session(session)
 
     return {
         "session_id": req.session_id,
@@ -401,6 +441,7 @@ def apply_frequency_filter_api(req: FrequencyFilterRequest):
     }
 
 
+@app.post("/evaluate")
 @app.post("/api/evaluate")
 def evaluate_image(req: EvaluateRequest):
     """
@@ -408,7 +449,7 @@ def evaluate_image(req: EvaluateRequest):
     """
     session = session_manager.get_session(req.session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or load an image.")
 
     if req.target_type == "noisy":
         target = session.noisy_image
@@ -425,6 +466,7 @@ def evaluate_image(req: EvaluateRequest):
     }
 
 
+@app.post("/batch-evaluate")
 @app.post("/api/batch-evaluate")
 def run_batch_evaluation(data: Dict[str, str]):
     """
@@ -434,7 +476,7 @@ def run_batch_evaluation(data: Dict[str, str]):
     session_id = data.get("session_id")
     session = session_manager.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="Session not found. Please upload or load an image.")
 
     clean = session.original_image
     noisy = session.noisy_image
@@ -562,4 +604,6 @@ def run_batch_evaluation(data: Dict[str, str]):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    host = os.environ.get("HOST", "0.0.0.0")
+    uvicorn.run("main:app", host=host, port=port, reload=False)

@@ -10,10 +10,14 @@ import {
   Metrics
 } from '../types/dsp';
 
+// Resolve API base URL using Vite environment variable
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
+// Normalize base URL: strip trailing slashes and optional redundant trailing '/api'
+const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '').replace(/\/api$/, '');
+
 // Axios instance
 const apiClient = axios.create({
-  // Keep calls same-origin so Vercel routes /api/* to the backend service.
-  baseURL: '',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
