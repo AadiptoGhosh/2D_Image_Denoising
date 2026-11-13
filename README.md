@@ -1,5 +1,7 @@
 # DSP Image Lab – Image Denoising Using 2-D Digital Signal Processing (DSP)
 
+**Live Server:** https://vercel.com/aadiptoghoshs-projects/2d_image_denoising/B6rbUHmDS9MywXTx8UoMRapoV4kf
+
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0+-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19.0-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
