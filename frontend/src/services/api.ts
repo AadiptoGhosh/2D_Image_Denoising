@@ -12,7 +12,8 @@ import {
 
 // Axios instance
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  // Keep calls same-origin so Vercel routes /api/* to the backend service.
+  baseURL: '',
   headers: {
     'Content-Type': 'application/json',
   },

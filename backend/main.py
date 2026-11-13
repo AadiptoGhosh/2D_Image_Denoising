@@ -37,7 +37,8 @@ from utils.session_manager import session_manager
 app = FastAPI(
     title="DSP Image Lab API",
     description="2-D Digital Signal Processing & Image Denoising Laboratory API",
-    version="1.0.0"
+    version="1.0.0",
+    root_path="/api"
 )
 
 # CORS Configuration
@@ -183,7 +184,7 @@ def load_sample(req: LoadSampleRequest):
     """
     Loads a built-in benchmark test image directly into a session.
     """
-    sample_path = os.path.join("samples", f"{req.sample_id}.png")
+    sample_path = os.path.join(os.path.dirname(__file__), "samples", f"{req.sample_id}.png")
     if os.path.exists(sample_path):
         img = cv2.imread(sample_path, cv2.IMREAD_UNCHANGED)
     else:
